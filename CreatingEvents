@@ -1,0 +1,63 @@
+import SwiftUI
+
+/// The core planning item. Kept as a single flat struct so it maps
+/// cleanly onto a CloudKit record later.
+
+    // MVP fields
+    var title: String
+    var date: Date          // calendar day the event belongs to
+    var isCompleted: Bool = false
+
+    // Standard-tier fields (safe to include now, no extra cost)
+    var time: Date?          // specific time within `date`, optional
+    var notes: String = ""
+
+    // Theming / customization
+    var category: EventCategory = .general
+    var colorHex: String?    // user override; falls back to category.defaultColor
+
+    // Scaffolding (not wired up yet, but modeled so
+    // the History and Notifications features have somewhere to live)
+    var completedDate: Date?
+    var reminderOffsetMinutes: Int? // e.g. 15 = notify 15 min before
+
+    var displayColor: Color {
+        if let hex = colorHex, let color = Color(hex: hex) {
+            return color
+        }
+        return category.defaultColor
+    }
+
+    /// Combines date with time into one Date,
+    /// falling back to just date if no specific time was set.
+    var combinedDateTime: Date {
+        guard let time = time else { return date }
+        let calendar = Calendar.current
+        let dayComponents = calendar.dateComponents([.year, .month, .day], from: date)
+        let timeComponents = calendar.dateComponents([.hour, .minute], from: time)
+        var merged = DateComponents()
+        merged.year = dayComponents.year
+        merged.month = dayComponents.month
+        merged.day = dayComponents.day
+        merged.hour = timeComponents.hour
+        merged.minute = timeComponents.minute
+        return calendar.date(from: merged) ?? date
+    }
+}
+
+// Small helper so events can store a hex string (CloudKit-friendly)
+// instead of a Color, which isn't directly Codable.
+extension Color {
+    init?(hex: String) {
+        var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
+        var rgb: UInt64 = 0
+        guard Scanner(string: hexSanitized).scanHexInt64(&rgb), hexSanitized.count == 6 else {
+            return nil
+        }
+        let r = Double((rgb & 0xFF0000) >> 16) / 255
+        let g = Double((rgb & 0x00FF00) >> 8) / 255
+        let b = Double(rgb & 0x0000FF) / 255
+        self = Color(red: r, green: g, blue: b)
+    }
+}

@@ -1,0 +1,112 @@
+import Foundation
+import SwiftUI
+import Combine
+
+/// Single source of truth for events on screen. Swap the persistence
+/// in `save()`/`load()` for CloudKit calls later — the rest of the
+/// app only talks to this view model, so that swap stays contained
+/// to this one file.
+@MainActor
+final class PlannerViewModel: ObservableObject {
+    @Published var events: [PlannerEvent] = [] {
+        didSet { save() }
+    }
+
+    @Published var selectedDate: Date = Date()
+
+    private let storageKey = "next.events.v1"
+
+    init() {
+        load()
+    }
+
+    // MARK: - CRUD
+
+    func addEvent(_ event: PlannerEvent) {
+        events.append(event)
+    }
+
+    func updateEvent(_ event: PlannerEvent) {
+        guard let index = events.firstIndex(where: { $0.id == event.id }) else { return }
+        events[index] = event
+    }
+
+    func deleteEvent(_ event: PlannerEvent) {
+        events.removeAll { $0.id == event.id }
+    }
+
+    func toggleCompleted(_ event: PlannerEvent) {
+        guard let index = events.firstIndex(where: { $0.id == event.id }) else { return }
+        events[index].isCompleted.toggle()
+        events[index].completedDate = events[index].isCompleted ? Date() : nil
+    }
+
+    // MARK: - Queries used by the calendar views
+
+    func events(on day: Date) -> [PlannerEvent] {
+        let calendar = Calendar.current
+        return events
+            .filter { calendar.isDate($0.date, inSameDayAs: day) }
+            .sorted { $0.combinedDateTime < $1.combinedDateTime }
+    }
+
+    func events(inWeekOf day: Date) -> [Date: [PlannerEvent]] {
+        let calendar = Calendar.current
+        guard let week = calendar.dateInterval(of: .weekOfYear, for: day) else { return [:] }
+        var result: [Date: [PlannerEvent]] = [:]
+        for offset in 0..<7 {
+            if let d = calendar.date(byAdding: .day, value: offset, to: week.start) {
+                result[calendar.startOfDay(for: d)] = events(on: d)
+            }
+        }
+        return result
+    }
+
+    /// Advanced-tier: completed task history, most recent first.
+    var completedHistory: [PlannerEvent] {
+        events
+            .filter { $0.isCompleted }
+            .sorted { ($0.completedDate ?? .distantPast) > ($1.completedDate ?? .distantPast) }
+    }
+
+    /// Standard: "time remaining until next task" — finds the
+    /// soonest upcoming event relative to now.
+    var nextUpcomingEvent: PlannerEvent? {
+        let now = Date()
+        return events
+            .filter { !$0.isCompleted && $0.combinedDateTime >= now }
+            .sorted { $0.combinedDateTime < $1.combinedDateTime }
+            .first
+    }
+
+    func timeRemainingString(for event: PlannerEvent) -> String {
+        let interval = event.combinedDateTime.timeIntervalSinceNow
+        if interval <= 0 { return "Happening now" }
+        let hours = Int(interval) / 3600
+        let minutes = (Int(interval) % 3600) / 60
+        if hours > 24 {
+            let days = hours / 24
+            return "\(days)d \(hours % 24)h away"
+        } else if hours > 0 {
+            return "\(hours)h \(minutes)m away"
+        } else {
+            return "\(minutes)m away"
+        }
+    }
+
+    // MARK: - Persistence (placeholder — swap for CloudKit)
+
+    private func save() {
+        if let data = try? JSONEncoder().encode(events) {
+            UserDefaults.standard.set(data, forKey: storageKey)
+        }
+    }
+
+    private func load() {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let decoded = try? JSONDecoder().decode([PlannerEvent].self, from: data) else {
+            return
+        }
+        events = decoded
+    }
+}

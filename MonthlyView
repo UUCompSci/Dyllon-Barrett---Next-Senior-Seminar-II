@@ -1,0 +1,229 @@
+import SwiftUI
+
+/// Custom month grid 
+/// Each day cell shows small colored dots for events.
+struct MonthView: View {
+    @EnvironmentObject var viewModel: PlannerViewModel
+    @State private var displayedMonth: Date = Date()
+    @State private var showingEditor = false
+    @State private var eventBeingEdited: PlannerEvent?
+
+    private let calendar = Calendar.current
+    private let columns = Array(repeating: GridItem(.flexible()), count: 7)
+
+    var body: some View {
+        VStack(spacing: 12) {
+            monthHeader
+
+            weekdayHeader
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(daysInMonthGrid(), id: \.self) { day in
+                    if let day = day {
+                        dayCell(for: day)
+                    } else {
+                        Color.clear.frame(height: 56)
+                    }
+                }
+            }
+            .padding(.horizontal)
+
+            if let selected = selectedDayEvents, !selected.isEmpty {
+                selectedDayList(selected)
+            }
+
+            Spacer()
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                // Clear, obvious action button per MVP requirement
+                Button {
+                    eventBeingEdited = nil
+                    showingEditor = true
+                } label: {
+                    Label("Add", systemImage: "plus.circle.fill")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditor) {
+            EventEditView(event: eventBeingEdited, defaultDate: viewModel.selectedDate)
+                .environmentObject(viewModel)
+        }
+    }
+
+    // MARK: - Header
+
+    private var monthHeader: some View {
+        HStack {
+            Button {
+                changeMonth(by: -1)
+            } label: {
+                Image(systemName: "chevron.left.circle.fill")
+                    .font(.title2)
+            }
+
+            Spacer()
+
+            // "Each month feels like a fresh start" — big friendly title
+            Text(displayedMonth.formatted(.dateTime.month(.wide).year()))
+                .font(.title2.bold())
+
+            Spacer()
+
+            Button {
+                changeMonth(by: 1)
+            } label: {
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.title2)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var weekdayHeader: some View {
+        HStack {
+            ForEach(calendar.veryShortWeekdaySymbols, id: \.self) { symbol in
+                Text(symbol)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    // MARK: - Day cell
+
+    private func dayCell(for day: Date) -> some View {
+        let dayEvents = viewModel.events(on: day)
+        let isSelected = calendar.isDate(day, inSameDayAs: viewModel.selectedDate)
+        let isToday = calendar.isDateInToday(day)
+
+        return Button {
+            viewModel.selectedDate = day
+        } label: {
+            VStack(spacing: 4) {
+                Text("\(calendar.component(.day, from: day))")
+                    .font(.subheadline.weight(isToday ? .bold : .regular))
+                    .foregroundStyle(isToday ? Color.accentColor : .primary)
+
+                HStack(spacing: 2) {
+                    ForEach(dayEvents.prefix(3)) { event in
+                        Circle()
+                            .fill(event.displayColor)
+                            .frame(width: 5, height: 5)
+                    }
+                }
+                .frame(height: 6)
+            }
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var selectedDayEvents: [PlannerEvent]? {
+        viewModel.events(on: viewModel.selectedDate)
+    }
+
+    private func selectedDayList(_ dayEvents: [PlannerEvent]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(viewModel.selectedDate.formatted(.dateTime.weekday(.wide).month().day()))
+                .font(.headline)
+                .padding(.horizontal)
+                .padding(.top, 4)
+
+            List {
+                ForEach(dayEvents) { event in
+                    EventRow(event: event)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            eventBeingEdited = event
+                            showingEditor = true
+                        }
+                }
+                .onDelete { offsets in
+                    for index in offsets { viewModel.deleteEvent(dayEvents[index]) }
+                }
+            }
+            .listStyle(.plain)
+            .frame(maxHeight: 220)
+        }
+    }
+
+    // MARK: - Month math
+
+    private func changeMonth(by value: Int) {
+        if let newMonth = calendar.date(byAdding: .month, value: value, to: displayedMonth) {
+            displayedMonth = newMonth
+        }
+    }
+
+    /// Returns a 6 by 7 grid for calander
+    private func daysInMonthGrid() -> [Date?] {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: displayedMonth),
+              let firstWeekday = calendar.dateComponents([.weekday], from: monthInterval.start).weekday else {
+            return []
+        }
+
+        let leadingBlanks = firstWeekday - calendar.firstWeekday
+        let normalizedLeading = leadingBlanks < 0 ? leadingBlanks + 7 : leadingBlanks
+
+        var days: [Date?] = Array(repeating: nil, count: normalizedLeading)
+
+        var current = monthInterval.start
+        while current < monthInterval.end {
+            days.append(current)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: current) else { break }
+            current = next
+        }
+
+        while days.count % 7 != 0 {
+            days.append(nil)
+        }
+
+        return days
+    }
+}
+
+/// Shared row used by Month, Week, and History lists.
+struct EventRow: View {
+    let event: PlannerEvent
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(event.displayColor)
+                .frame(width: 10, height: 10)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.title)
+                    .font(.body)
+                    .strikethrough(event.isCompleted)
+                    .foregroundStyle(event.isCompleted ? .secondary : .primary)
+
+                if let time = event.time {
+                    Text(time.formatted(.dateTime.hour().minute()))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if !event.notes.isEmpty {
+                    Text(event.notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+
+            Image(systemName: event.category.symbolName)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+}

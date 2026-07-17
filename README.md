@@ -4,8 +4,6 @@ Senior Project
 /// this is the hook for baseball/Union University style
 /// customizations. Start simple with a
 /// handful of base categories + a color. Attach
-/// custom icon sets, background art, or phrase banks per sub-theme
-/// later on .(e.g. Category.athlete + baseball).
 enum EventCategory: String, CaseIterable, Codable, Identifiable {
     case general
     case athlete

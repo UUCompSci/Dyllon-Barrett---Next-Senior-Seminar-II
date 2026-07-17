@@ -3,7 +3,7 @@ Senior Project
 /// Represents the "persona" a user can pick to theme the app —
 /// this is the hook for baseball/Union University style
 /// customizations. Start simple with a
-/// handful of base categories + a color. Attach
+/// handful of base categories + a color
 enum EventCategory: String, CaseIterable, Codable, Identifiable {
     case general
     case athlete

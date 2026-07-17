@@ -1,0 +1,58 @@
+import SwiftUI
+
+struct ContentView: View {
+    @StateObject private var viewModel = PlannerViewModel()
+
+    var body: some View {
+        TabView {
+            NavigationView {
+                MonthView()
+                    .navigationTitle("Next")
+            }
+            .tabItem {
+                Label("Month", systemImage: "calendar")
+            }
+
+            NavigationView {
+                WeekView()
+                    .navigationTitle("This Week")
+            }
+            .tabItem {
+                Label("Week", systemImage: "list.bullet.rectangle")
+            }
+
+            NavigationView {
+                HistoryView()
+                    .navigationTitle("History")
+            }
+            .tabItem {
+                Label("History", systemImage: "checkmark.circle")
+            }
+        }
+        .environmentObject(viewModel)
+    }
+}
+
+/// shows completed tasks. Wire up drag/drop
+/// and notification scheduling as separate views once MVP
+/// and Standard tiers are solid.
+struct HistoryView: View {
+    @EnvironmentObject var viewModel: PlannerViewModel
+
+    var body: some View {
+        List {
+            if viewModel.completedHistory.isEmpty {
+                Text("Completed tasks will show up here.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(viewModel.completedHistory) { event in
+                    EventRow(event: event)
+                }
+            }
+        }
+    }
+}
+
+#Preview {
+    ContentView()
+}

@@ -1,0 +1,112 @@
+import SwiftUI
+
+/// Simple week view. Each day is its own section.
+struct WeekView: View {
+    @EnvironmentObject var viewModel: PlannerViewModel
+    @State private var anchorDate: Date = Date()
+    @State private var showingEditor = false
+    @State private var eventBeingEdited: PlannerEvent?
+
+    private let calendar = Calendar.current
+
+    var body: some View {
+        VStack(spacing: 8) {
+            weekHeader
+
+            List {
+                if let next = viewModel.nextUpcomingEvent {
+                    Section {
+                        HStack {
+                            Image(systemName: "clock.fill")
+                                .foregroundStyle(.orange)
+                            VStack(alignment: .leading) {
+                                Text("Up next: \(next.title)")
+                                    .font(.subheadline.weight(.semibold))
+                                Text(viewModel.timeRemainingString(for: next))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                ForEach(sortedDays, id: \.self) { day in
+                    Section(header: Text(day.formatted(.dateTime.weekday(.wide).month().day()))) {
+                        let dayEvents = viewModel.events(on: day)
+                        if dayEvents.isEmpty {
+                            Text("Nothing planned")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(dayEvents) { event in
+                                EventRow(event: event)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        eventBeingEdited = event
+                                        showingEditor = true
+                                    }
+                            }
+                            .onDelete { offsets in
+                                for index in offsets { viewModel.deleteEvent(dayEvents[index]) }
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    eventBeingEdited = nil
+                    showingEditor = true
+                } label: {
+                    Label("Add", systemImage: "plus.circle.fill")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditor) {
+            EventEditView(event: eventBeingEdited, defaultDate: anchorDate)
+                .environmentObject(viewModel)
+        }
+    }
+
+    private var weekHeader: some View {
+        HStack {
+            Button {
+                changeWeek(by: -1)
+            } label: {
+                Image(systemName: "chevron.left.circle.fill")
+                    .font(.title2)
+            }
+
+            Spacer()
+
+            if let interval = calendar.dateInterval(of: .weekOfYear, for: anchorDate) {
+                Text("\(interval.start.formatted(.dateTime.month().day())) - \(interval.end.formatted(.dateTime.month().day()))")
+                    .font(.headline)
+            }
+
+            Spacer()
+
+            Button {
+                changeWeek(by: 1)
+            } label: {
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.title2)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var sortedDays: [Date] {
+        guard let week = calendar.dateInterval(of: .weekOfYear, for: anchorDate) else { return [] }
+        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week.start) }
+    }
+
+    private func changeWeek(by value: Int) {
+        if let newDate = calendar.date(byAdding: .weekOfYear, value: value, to: anchorDate) {
+            anchorDate = newDate
+        }
+    }
+}

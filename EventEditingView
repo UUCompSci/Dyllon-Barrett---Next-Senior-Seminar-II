@@ -1,0 +1,110 @@
+import SwiftUI
+
+/// Creating a new event and editing an existing one.
+struct EventEditView: View {
+    @EnvironmentObject var viewModel: PlannerViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    let existingEvent: PlannerEvent?
+
+    @State private var title: String
+    @State private var date: Date
+    @State private var includeTime: Bool
+    @State private var time: Date
+    @State private var notes: String
+    @State private var category: EventCategory
+    @State private var showingDeleteConfirm = false
+
+    init(event: PlannerEvent?, defaultDate: Date) {
+        self.existingEvent = event
+        _title = State(initialValue: event?.title ?? "")
+        _date = State(initialValue: event?.date ?? defaultDate)
+        _includeTime = State(initialValue: event?.time != nil)
+        _time = State(initialValue: event?.time ?? defaultDate)
+        _notes = State(initialValue: event?.notes ?? "")
+        _category = State(initialValue: event?.category ?? .general)
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Details") {
+                    TextField("Title", text: $title)
+
+                    DatePicker("Date", selection: $date, displayedComponents: .date)
+
+                    Toggle("Specific time", isOn: $includeTime.animation())
+                    if includeTime {
+                        DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
+                    }
+                }
+
+                Section("Notes") {
+                    TextEditor(text: $notes)
+                        .frame(minHeight: 80)
+                }
+
+                Section("Category") {
+                    Picker("Category", selection: $category) {
+                        ForEach(EventCategory.allCases) { cat in
+                            Label(cat.displayName, systemImage: cat.symbolName)
+                                .tag(cat)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                }
+
+                if existingEvent != nil {
+                    Section {
+                        Button(role: .destructive) {
+                            showingDeleteConfirm = true
+                        } label: {
+                            Label("Delete Event", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+            .navigationTitle(existingEvent == nil ? "New Event" : "Edit Event")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .bold()
+                }
+            }
+            .confirmationDialog(
+                "Delete this event?",
+                isPresented: $showingDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let existingEvent {
+                        viewModel.deleteEvent(existingEvent)
+                    }
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+        }
+    }
+
+    private func save() {
+        var event = existingEvent ?? PlannerEvent(title: "", date: date)
+        event.title = title.trimmingCharacters(in: .whitespaces)
+        event.date = date
+        event.time = includeTime ? time : nil
+        event.notes = notes
+        event.category = category
+
+        if existingEvent == nil {
+            viewModel.addEvent(event)
+        } else {
+            viewModel.updateEvent(event)
+        }
+        dismiss()
+    }
+}
